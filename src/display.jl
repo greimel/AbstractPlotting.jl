@@ -112,6 +112,7 @@ function has_juno_plotpane()
 end
 
 isijulia() = isdefined(Main, :IJulia) && isdefined(Main.IJulia, :clear_output)
+isvscode() = isdefined(Main, :VSCodeServer)
 
 # fallback show when no backend is selected
 function backend_show(backend, io::IO, ::MIME"text/plain", scene::Scene)
@@ -121,7 +122,9 @@ function backend_show(backend, io::IO, ::MIME"text/plain", scene::Scene)
         try `]build GLMakie` and watch out for any warnings.
         """
     end
-    if !use_display[] && !isempty(available_backends)
+    if !use_display[] && isvscode()
+        # do nothing
+    elseif !use_display[] && !isempty(available_backends)
         plotpane = has_juno_plotpane()
         if plotpane !== nothing && !plotpane
             # we want to display as inline!, we are in Juno, but the plotpane is disabled
@@ -379,8 +382,36 @@ function VideoStream(
     VideoStream(process.in, process, screen, abspath(path))
 end
 
+
+# This has to be overloaded by the backend for its screen type.
 function colorbuffer(x)
     error("colorbuffer not implemented for screen $(typeof(x))")
+end
+
+"""
+    colorbuffer(scene)
+    colorbuffer(screen)
+
+Returns the content of the given scene or screen rasterised to a Matrix of
+Colors.  The return type is backend-dependent, but will be some form of RGB
+or RGBA.
+"""
+function colorbuffer(scene::Scene)
+    screen = getscreen(scene)
+    if isnothing(screen)
+        if ismissing(current_backend[])
+            error("""
+                You have not loaded a backend.  Please load one (`using GLMakie` or `using CairoMakie`)
+                before trying to render a Scene.
+                """)
+        else
+            error("""
+                The Scene needs an active screen before a colorbuffer can be rendered from it.
+                Ensure that it has one via `display(scene)`.
+                """)
+        end
+    end
+    return colorbuffer(screen)
 end
 
 """
