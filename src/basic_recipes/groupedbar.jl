@@ -7,6 +7,7 @@ using Revise
 using CairoMakie
 using DataFrames
 using Random: shuffle
+using DataAPI: refarray
 
 bar_df = let
 	n_dodge = 2
@@ -35,7 +36,10 @@ end
 bar1 = filter(:dodge_i => ==(1), bar_df)
 bar2 = filter(:dodge_i => ==(2), bar_df)
 
-scn = barplot(bar1.grp_x, bar1.y, dodge = bar1.grp_dodge, stack = bar1.grp_stack, color = bar1.stack_i)
+scn = barplot(bar1.grp_x, bar1.y, dodge = bar1.grp_dodge, stack = bar1.grp_stack, color = refarray(bar1.grp_stack))
 
-scn = barplot!(bar2.grp_x, bar2.y, dodge = bar2.grp_dodge, stack = bar2.grp_stack, color = bar2.stack_i)
+barplot!(scn, bar2.grp_x, bar2.y, dodge = bar2.grp_dodge, stack = bar2.grp_stack, color = refarray(bar2.grp_stack))
+
+scn.plots[2].dodge
+scn.plots
 
