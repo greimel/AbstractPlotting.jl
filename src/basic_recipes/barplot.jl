@@ -8,7 +8,7 @@ $(ATTRIBUTES)
 """
 @recipe(BarPlot, x, y) do scene
     Attributes(;
-        fillto = 0.0,
+        fillto = automatic,
         color = theme(scene, :color),
         colormap = theme(scene, :colormap),
         colorrange = automatic,
@@ -16,6 +16,7 @@ $(ATTRIBUTES)
         x_gap = 0.1,
         dodge_gap = 0.03,
         marker = Rect,
+        stack = automatic,
         strokewidth = 0,
         strokecolor = :white,
         width = automatic,
@@ -37,6 +38,7 @@ end
 flip(r::Rect2D) = Rect2D(reverse(origin(r)), reverse(widths(r)))
 
 using DataAPI: refarray, levels
+import DataFrames
 
 function AbstractPlotting.plot!(p::BarPlot)
 
@@ -50,7 +52,7 @@ function AbstractPlotting.plot!(p::BarPlot)
         end
     end
 
-    bars = lift(p[1], p.fillto, p.width, p.dodge, p.x_gap, p.dodge_gap, in_y_direction) do xy, fillto, width, dodge, x_gap, dodge_gap, in_y_direction
+    bars = lift(p[1], p.fillto, p.width, p.dodge, p.x_gap, p.dodge_gap, p.stack, in_y_direction) do xy, fillto, width, dodge, x_gap, dodge_gap, stack, in_y_direction
       
         #
         if dodge === automatic
@@ -83,6 +85,33 @@ function AbstractPlotting.plot!(p::BarPlot)
         end
         
         shft = shift_dodge.(1:n_dodge, x_gap, dodge_gap, n_dodge)
+
+        # --------------------------------
+        # ----------- Stacking -----------
+        # --------------------------------
+
+        if stack === automatic
+            if fillto === automatic
+                fillto = 0.0
+            end
+        else
+            fillto === automatic || @warn "Ignore keyword fillto when keyword stack is provided"
+            i_stack = refarray(stack)
+            @assert eltype(i_dodge) <: Integer
+            # This is satisfied if dodge isa PooledArray, CategoricalArray or Vector{<:Integer}
+            
+            tmp_df = DataFrames.DataFrame(x = x, y = y, i_stack = i_stack, i_dodge = i_dodge, order = 1:length(x))
+            sort!(tmp_df, [:i_stack])
+            
+            DataFrames.groupby(tmp_df, [:i_dodge, :x]) |>
+                df -> DataFrames.transform!(df, :y => from_val => :from,
+                                                :y => to_val => :to)
+              
+            sort!(tmp_df, :order)
+            
+            y = tmp_df.to
+            fillto = tmp_df.from
+        end
         
         rects = bar_rectangle.(x .+ width .* shft[i_dodge], y, width .* dodge_width, fillto)
         return in_y_direction ? rects : flip.(rects)
@@ -102,3 +131,6 @@ function shift_dodge(i, x_gap, dodge_gap, n_dodge)
     - (1/2) + (i-1)*(wdt + dodge_gap) + (0.5 * (wdt + x_gap + dodge_gap))
 end
 
+to_val(y) = cumsum(y)
+
+from_val(y) = [zero(eltype(y)); cumsum(y)[begin:end-1]]
