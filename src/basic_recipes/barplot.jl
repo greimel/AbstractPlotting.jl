@@ -12,6 +12,9 @@ $(ATTRIBUTES)
         color = theme(scene, :color),
         colormap = theme(scene, :colormap),
         colorrange = automatic,
+        dodge = automatic,
+        x_gap = 0.1,
+        dodge_gap = 0.03,
         marker = Rect,
         strokewidth = 0,
         strokecolor = :white,
@@ -23,8 +26,7 @@ end
 
 conversion_trait(::Type{<: BarPlot}) = PointBased()
 
-function bar_rectangle(xy, width, fillto)
-    x, y = xy
+function bar_rectangle(x, y, width, fillto)
     # y could be smaller than fillto...
     ymin = min(fillto, y)
     ymax = max(fillto, y)
@@ -33,6 +35,8 @@ function bar_rectangle(xy, width, fillto)
 end
 
 flip(r::Rect2D) = Rect2D(reverse(origin(r)), reverse(widths(r)))
+
+using DataAPI: refarray, levels
 
 function AbstractPlotting.plot!(p::BarPlot)
 
@@ -46,14 +50,41 @@ function AbstractPlotting.plot!(p::BarPlot)
         end
     end
 
-    bars = lift(p[1], p.fillto, p.width, in_y_direction) do xy, fillto, width, in_y_direction
+    bars = lift(p[1], p.fillto, p.width, p.dodge, p.x_gap, p.dodge_gap, in_y_direction) do xy, fillto, width, dodge, x_gap, dodge_gap, in_y_direction
+      
+        #
+        if dodge === automatic
+            n_dodge = 1
+        else
+            n_dodge = length(unique(dodge))
+            @show n_dodge
+        end
+        
+        x = first.(xy)
+        y = last.(xy)
+        
         # compute half-width of bars
         if width === automatic
             # times 0.8 for default gap
-            width = mean(diff(first.(xy))) * 0.8 # TODO ignore nan?
+            width = mean(diff(sort(unique(x)))) # TODO ignore nan?
         end
+        
+        # --------------------------------
+        # ------------ Dodging -----------
+        # --------------------------------
+        dodge_width = scale_width(x_gap, dodge_gap, n_dodge)
 
-        rects = bar_rectangle.(xy, width, fillto)
+        if dodge === automatic
+            i_dodge = 1
+        else
+            i_dodge = refarray(dodge)
+            @assert eltype(i_dodge) <: Integer
+            # This is satisfied if dodge isa PooledArray, CategoricalArray or Vector{<:Integer}
+        end
+        
+        shft = shift_dodge.(1:n_dodge, x_gap, dodge_gap, n_dodge)
+        
+        rects = bar_rectangle.(x .+ width .* shft[i_dodge], y, width .* dodge_width, fillto)
         return in_y_direction ? rects : flip.(rects)
     end
 
@@ -62,3 +93,12 @@ function AbstractPlotting.plot!(p::BarPlot)
         strokewidth = p.strokewidth, strokecolor = p.strokecolor, visible = p.visible
     )
 end
+
+scale_width(x_gap, dodge_gap, n_dodge) = ((1 - x_gap) - n_dodge * dodge_gap) / n_dodge
+
+function shift_dodge(i, x_gap, dodge_gap, n_dodge)
+    wdt = scale_width(x_gap, dodge_gap, n_dodge)
+
+    - (1/2) + (i-1)*(wdt + dodge_gap) + (0.5 * (wdt + x_gap + dodge_gap))
+end
+
