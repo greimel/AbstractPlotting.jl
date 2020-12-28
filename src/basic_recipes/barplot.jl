@@ -58,7 +58,7 @@ function AbstractPlotting.plot!(p::BarPlot)
         if dodge === automatic
             n_dodge = 1
         else
-            n_dodge = length(unique(dodge))
+            n_dodge = length(levels(dodge))
             @show n_dodge
         end
         
